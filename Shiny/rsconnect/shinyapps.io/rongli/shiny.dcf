@@ -1,0 +1,10 @@
+name: shiny
+title:
+username:
+account: rongli
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 3047670
+bundleId: 3757968
+url: https://rongli.shinyapps.io/shiny/
+when: 1603106861.90108

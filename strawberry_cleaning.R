@@ -28,8 +28,7 @@ ag_data %<>% select(-4)
 aa %<>% select(-4) 
 
 ## Display the head of ag_data 
-kable(head(ag_data)) %>%
-  kable_styling(font_size=12)
+head(ag_data)
 
 ## 3 kinds of berries
 berry <- unique(ag_data$Commodity)

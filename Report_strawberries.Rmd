@@ -1,0 +1,187 @@
+---
+title: "MA615 Unit 1 Final Assignment"
+author: "Rong Li"
+date: "2020/10/19"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load("tidyverse","knitr","kableExtra","ggplot2")
+options (warn = -1)
+```
+
+# 1 Summary
+In this assignment, we use the data set berries from USDA. We focus on one kind of berries--strawberries. Finish cleaning and organizing the data. Visualize and explore the data. This report can be divided into 2 parts: Data cleaning and EDA. 
+
+* Data cleaning: We select the data of strawberries from the raw data. Seperate some columns and eliminate the redundancy.
+* EDA: We plot the boxplots for values of every year and of every states. Then we conduct the pca for values.
+
+Besides, we deploy a shiny app [Shiny_strawberries](https://rongli.shinyapps.io/shiny/) for data display.
+
+# 2 Data cleaning
+In this part, we obtain the data set strawberries that we will conduct EDA for later.
+
+## 2.1 Deal with the raw data set berries
+First, we explore the data set berries. Find out the redundent columns and delete them. Then display the data set.  
+
+```{r}
+## read the data
+ag_data <- read_csv("/Users/amelia/Documents/mssp/MA615/Hw_berries/Berries_strawberries/data/berries.csv", col_names = TRUE)
+
+## look at number of unique values in each column
+aa <- summarize_all(ag_data, n_distinct)
+
+## make a list of the columns with only one unique value
+bb <- which(aa[1,] == 1)
+
+## list the 1-unique valu column names 
+colnames(ag_data)[bb]
+
+## remove the 1-unique columns from the dataset
+ag_data <- select(ag_data, -all_of(bb))
+aa <- select(aa, -all_of(bb)) 
+
+## State name and the State ANSI code are (sort of) redundant
+## Just keep the name
+ag_data <- select(ag_data, -4)
+aa <- select(aa, -4) 
+
+## Display the head of ag_data 
+head(ag_data)
+```
+
+## 2.2 Get the raw data of strawberries 
+Now, we focus on one kind of berries--strawberries.
+
+```{r}
+## Strawberries
+sberry <- filter(ag_data, (Commodity=="STRAWBERRIES") & (Period=="YEAR"))
+sberry <- select(sberry, -c(Period, Commodity))
+```
+
+## 2.3 Separate the column 'Data Item' into 3 columns "type", "meas" and "what".
+
+```{r}
+#### Does every Data Item begin with "STRAWBERRIES, "
+sum(str_detect(sberry$`Data Item`, "^STRAWBERRIES, ")) == length(sberry$`Data Item`)
+
+## Seperate the Data Item
+sberry1 <- subset(sberry, str_detect(sberry$`Data Item`, "^STRAWBERRIES, ") == "TRUE")
+sberry2 <- subset(sberry, str_detect(sberry$`Data Item`, "^STRAWBERRIES, ") == "FALSE")
+sberry1 <- separate(sberry1, `Data Item`, c("B","type", "meas", "what"), sep = ",") 
+sberry2 <- separate(sberry2, `Data Item`, c("B","todo"), sep = "-") 
+sberry2 <- separate(sberry2, `todo`, c("type","meas", "what"), sep = ",") 
+sberry <- rbind(sberry1, sberry2)
+sberry <- select(sberry, -B)
+```
+
+## 2.4 Seperate the column "type" into 3 columns "type", "lab1" and "lab2".
+
+```{r}
+## Seperate the type
+sberry1 <- subset(sberry, str_detect(sberry$`type`, " - ") == "TRUE")
+sberry1 <- separate(sberry1, type,c("type", "lab1", "lab2"), " - ")
+sberry1 <- separate(sberry1, type,c("b1", "type"), " ")
+
+sberry2 <- subset(sberry, type == " FRESH MARKET")
+sberry2$type <- "FRESH MARKET"
+
+sberry3 <- subset(sberry, type == " PROCESSING")
+sberry3$type <- "PROCESSING"
+
+sberry4 <- subset(sberry, str_detect(sberry$`type`, " - ") == "FALSE" & 
+                    type != " FRESH MARKET" & type != " PROCESSING")
+sberry4 <- separate(sberry4, type,c("b1", "lab1", "lab2"), " ")
+
+sberry <- plyr::rbind.fill(sberry1, sberry2, sberry3, sberry4)
+
+sberry[is.na(sberry)] <- ""
+
+sberry <- select(sberry, -b1)
+## OK now Data Item has been split into parts
+```
+
+## 2.5 Separate the column "Domain" into 2 columns "D_left" and "D_right".
+
+```{r}
+## onto Domain
+sberry <- separate(sberry, Domain, c("D_left", "D_right"), sep = ", ")
+
+sberry[is.na(sberry)] <- ""
+```
+
+## 2.6 Separate the column "Domain Category" into 4 columns "DC_left_l", "DC_left_r", "DC_right_l", "DC_right_r".
+
+```{r}
+## And now Domain Category
+sberry <- separate(sberry, `Domain Category`, c("DC_left", "DC_right"), sep = ", ")
+
+## unique(sberry$DC_left)
+## unique(sberry$DC_right)
+
+## looks like DC_left combines labels
+sberry$DC_right[which(str_detect(sberry$DC_left,"138831"))]="INSECTICIDE: (CYFLUMETOFEN = 138831)"
+sberry$DC_left[which(str_detect(sberry$DC_left,"138831"))]="CHEMICAL"
+
+
+## work on DC_left first
+
+sberry <- separate(sberry, DC_left, c("DC_left_l", "DC_left_r"), sep = ": ")
+
+## sberry$DC_left_l %>% unique()
+## sberry$DC_left_r %>% unique()
+
+## now work on DC_right
+
+sberry <- separate(sberry, DC_right, c("DC_right_l", "DC_right_r"), sep = ": ") 
+
+
+sberry[is.na(sberry)] <- ""
+```
+
+## 2.7 Eliminate the redundancy in data set strawberries
+a) remove column "DC_left_l"; b) remove column "DC_right_l"; c)remove
+
+```{r}
+## fine and remove redundant columns
+
+## Test for D_left, DC_left_l
+## paste(sberry$D_left,sberry$DC_left_l) %>% unique
+## returns -- "CHEMICAL CHEMICAL"     "FERTILIZER FERTILIZER" "TOTAL NOT SPECIFIED" 
+
+## remove column bberry$DC_left_l
+sberry <- select(sberry, -DC_left_l)
+
+## Test for D_right, DC_right_l
+# sum(sberry$D_right == sberry$DC_right_l)
+# [1] 3220
+# sberry$DC_left_r %>% unique()
+# [1] ""            "(NITROGEN)"  "(PHOSPHATE)" "(POTASH)"    "(SULFUR)"   
+
+## remove column DC_right_l
+sberry %<>% select(-DC_right_l)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
