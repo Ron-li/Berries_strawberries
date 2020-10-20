@@ -1,10 +1,12 @@
 name: shiny
-title:
+title: shiny
 username:
 account: rongli
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 3047670
-bundleId: 3757968
+bundleId: 3761636
 url: https://rongli.shinyapps.io/shiny/
-when: 1603106861.90108
+when: 1603182858.42064
+asMultiple: FALSE
+asStatic: FALSE
