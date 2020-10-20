@@ -7,7 +7,7 @@ output: pdf_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load("tidyverse","knitr","kableExtra","ggplot2")
+pacman::p_load("tidyverse","knitr","kableExtra","ggplot2", "ggbiplot")
 options (warn = -1)
 ```
 
@@ -141,47 +141,282 @@ sberry[is.na(sberry)] <- ""
 ```
 
 ## 2.7 Eliminate the redundancy in data set strawberries
-a) remove column "DC_left_l"; b) remove column "DC_right_l"; c)remove
+a) remove column "DC_left_l"; b) remove column "DC_right_l"; c)create new column "label" = "lab1" + "lab2"; d)create new column "Chemical"; e)select the columns
 
 ```{r}
 ## fine and remove redundant columns
 
-## Test for D_left, DC_left_l
+## a) Test for D_left, DC_left_l
 ## paste(sberry$D_left,sberry$DC_left_l) %>% unique
 ## returns -- "CHEMICAL CHEMICAL"     "FERTILIZER FERTILIZER" "TOTAL NOT SPECIFIED" 
 
 ## remove column bberry$DC_left_l
 sberry <- select(sberry, -DC_left_l)
 
-## Test for D_right, DC_right_l
+## b) Test for D_right, DC_right_l
 # sum(sberry$D_right == sberry$DC_right_l)
 # [1] 3220
 # sberry$DC_left_r %>% unique()
 # [1] ""            "(NITROGEN)"  "(PHOSPHATE)" "(POTASH)"    "(SULFUR)"   
 
 ## remove column DC_right_l
-sberry %<>% select(-DC_right_l)
+sberry <- select(sberry, -DC_right_l)
+
+
+## c) Test for lab1, lab2
+# paste(sberry$lab1, sberry$lab2) %>% unique()
+# [1] "APPLICATIONS "   "TREATED "        "PRODUCTION "     " "              
+# [5] "ACRES HARVESTED" "ACRES PLANTED"   "YIELD "  
+
+## create new column label
+sberry <- mutate(sberry, label = paste(lab1,lab2))
+
+
+## d) test for necessity of "chemical" in col D_left
+# paste(sberry$D_left, sberry$D_right) %>% unique()
+# [1] "CHEMICAL FUNGICIDE"   "CHEMICAL HERBICIDE"   "CHEMICAL INSECTICIDE"
+# [4] "CHEMICAL OTHER"       "FERTILIZER "          "TOTAL "   
+
+## remove "Chemical" and joint the columns
+sberry$D_left[which(sberry$D_left == "CHEMICAL")] <- ""
+sberry <- mutate(sberry, Chemical=paste(D_left, D_right)) 
+sberry <- select(sberry, -c(D_left, D_right)) 
+
+## e) select the columns
+sberry <- select(sberry, Year, State, type, what, meas, label, DC_left_r, DC_right_r, Chemical, Value )
+
 ```
 
 
+## 2.8 Check for overlaps in "what" & "meas" and create a new column "units"
+
+```{r}
+###  Now the problem is that we have entries in both the "what" and "meas" columns
+##  that begin  "MEASURED IN"
+##  how many are there
+
+## in the column "what"
+cnt_1 <- str_detect(sberry$what, "MEASURED IN")
+sum(cnt_1)
+
+## in the column "meas"
+
+cnt_2 <- str_detect(sberry$meas, "MEASURED IN")
+sum(cnt_2)
+
+## We want to put them all in the same column
+## So, we will separate them from their current column and put them into
+## two columns -- then we will test to make sure there aren't any overlaps
+## and then merge the two columns
+
+## we're going to use PURRR.  We need a simple function that takes a logical
+## variable and a second variable.  It returns the second variable if the logical
+## variable is true and returns a blank if it is false
+
+f1 <- function(a,b){
+  if(a){
+    return(b)
+  }else{
+    return("")
+  }
+} 
+
+#########################################################
+## now let's separate the "MEASURED IN" entries in the meas column
+## form an index of the entries to be separated out
+
+index_meas <- str_detect(sberry$meas, "MEASURED IN")
+
+sberry <- mutate(sberry, m_in_1 = unlist(map2(index_meas, sberry$meas, f1))) 
+
+sberry <- mutate(sberry, meas = str_replace(sberry$meas, "MEASURED IN.*$", ""))
+
+## Check
+cnt_3 <- str_detect(sberry$meas, "MEASURED IN")
+sum(cnt_3)
+
+#########################
+## Now we will do the same thing with the 
+## "what" column  
+
+### index of cells to be isolated
+index_what <- str_detect(sberry$what, "MEASURED IN")
+sum(index_what)
+
+### create a column of the isolated cells
+sberry <- mutate(sberry, m_in_2 = unlist(map2(index_what, sberry$what, f1))) 
+
+###  eliminate the isolated cells from the original column
+sberry <- mutate(sberry, what = str_replace(sberry$what, "MEASURED IN.*$", ""))
+
+### test that theere are no more "MEASURED IN" cells in the original column
+cnt_what <- str_detect(sberry$what, "MEASURED IN")
+sum(cnt_what)
+
+### Check for overlaps
+sberry <- mutate(sberry, units = str_trim(paste(m_in_1, m_in_2))) 
+
+unique(sberry$units)
+```
 
 
+## 2.9 Rename and merge the columns with the same meaning
+
+```{r}
+## rename the columns
+sberry <- dplyr::rename(sberry, Avg = what, Marketing = meas, Harvest = label, 
+                               Chem_family = DC_left_r, Materials = DC_right_r, 
+                               Measures = units)
+
+## select the columns
+sberry <- select(sberry, Year, State, type, Marketing, 
+                   Measures, Avg, Harvest, Chem_family,
+                   Materials, Chemical, Value )
+
+unique(str_trim(paste(sberry$Marketing, sberry$Harvest)))
 
 
+###  "Marketing" and "Harvest" belong in one column
+sberry <- mutate(sberry, production = str_trim(paste(Marketing, Harvest)))
+
+sberry <- select(sberry, Year, State, type, production, Measures,
+                   Avg, Chem_family, Materials, Chemical, Value)
 
 
+## "Chem_family" and "Chemical" belong in one column
+sberry <- mutate(sberry, Chemical = str_trim(paste(Chem_family, Chemical)))
+
+sberry <- select(sberry, Year, State, type, production, Avg, Measures, 
+                   Materials, Chemical, Value)
+
+## numeric the column "Value"
+sberry$Value <- as.numeric(str_replace_all(sberry$Value,c(','='')))
+head(sberry)
+write.csv(sberry, file = "/Users/amelia/Documents/mssp/MA615/Hw_berries/strawberries.csv", row.names = FALSE)
+```
+
+When we finish this part, we get a new csv file named "strawberries.csv" which is cleaned and organized.  
+
+# 3 EDA
+
+## 3.1 Calculate the total values of strawberries every state and every year
+
+```{r}
+## load the data
+sberry <- read.csv("/Users/amelia/Documents/mssp/MA615/Hw_berries/Berries_strawberries/data/strawberries.csv")
+df <- filter(sberry, is.na(Value) == "FALSE")
+
+## Calculate the total values of strawberries every state
+t1 <- summarize(group_by(df, State), total=sum(Value))
+t1
+
+## Calculate the total values of strawberries every state
+t2 <- summarize(group_by(df, Year), total=sum(Value))
+t2
+```
+
+## 3.2 Plot the boxplots of different states and different years
+
+```{r}
+## boxplot of different states
+bp1 <- ggplot(df, aes(x = State, y = Value))
+bp1 <- bp1 + geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1),
+        axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13, face = "bold")) +
+  labs(x = "Different states")
+bp1
+
+## excluding outliers
+bp2 <- ggplot(df, aes(x = State, y = Value))
+bp2 <- bp2 + geom_boxplot(outlier.colour = NA) +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1),
+        axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13, face = "bold")) +
+  coord_cartesian(ylim = c(0, 8e+6)) +
+  labs(x = "Different states")
+bp2
+
+## boxplot of different years
+bp3 <- ggplot(df, aes(x = factor(Year), y = Value))
+bp3 <- bp3 + geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1),
+        axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13, face = "bold")) +
+  labs(x = "Different years")
+bp3
+
+## excluding outliers
+bp4 <- ggplot(df, aes(x = factor(Year), y = Value))
+bp4 <- bp4 + geom_boxplot(outlier.colour = NA) +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1),
+        axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13, face = "bold")) +
+  coord_cartesian(ylim = c(0, 6e+6)) +
+  labs(x = "Different years")
+bp4
+```
 
 
+## 3.2 Prepare the data for PCA
+Here we use Principal Component Analysis (PCA) to analyze the relationships between different chemimcals. There are 8 kinds of chemicals: (NITROGEN) FERTILIZER, (PHOSPHATE) FERTILIZER, (POTASH) FERTILIZER, (SULFUR) FERTILIZER, (TOTAL) FUNGICIDE, (TOTAL) HERBICIDE, (TOTAL) INSECTICIDE and (TOTAL) OTHER.  
+Since the FERRTILIZER data only collected in 2015 and 2019, we will choose these two years 2018 and 2019 only. Besides, for missing value, we use mean value to replace.
+```{r}
+## a) prepare data for pca
+# load data
+df_value <- filter(sberry, 
+                Year%in%c('2019','2018'), 
+                Measures=='MEASURED IN LB', 
+                Materials%in%c('(TOTAL)','')
+                )
 
+# in the rear of the data, it lacks a row of (SULFUR) FERTILIZER, just add it.
+df_value <- rbind(df_value, df_value[nrow(df_value), ])
+df_value$Value[nrow(df_value)] <- NA
+df_value$Chemical[nrow(df_value)] <- '(SULFUR) FERTILIZER'
 
+# arrange data
+df_value$MC <- paste(df_value$Materials, df_value$Chemical)
+df_value <- arrange(df_value, df_value$Year, df_value$State, df_value$MC)
 
+# handle missing value
+for(i in unique(df_value$MC)){
+  m <- df_value$Value[df_value$Value!=' (D)' & 
+                        !is.na(df_value$Value) & 
+                        df_value$MC==i] %>% 
+    str_replace_all(c(','='')) %>% 
+    as.numeric() %>% 
+    mean()
+  df_value$Value[(df_value$Value==' (D)' | 
+                    is.na(df_value$Value)) & 
+                   df_value$MC==i] <- m
+  
+}
 
+# transform for PCA
+j <- 1
+for(i in unique(df_value$MC)){
+  if(j==1) df_pca <- df_value$Value[df_value$MC==i]
+  else df_pca <- cbind(df_pca, df_value$Value[df_value$MC==i])
+  j <- 0
+}
+colnames(df_pca) <- unique(df_value$MC)
+head(df_pca)
+## the data is ready.
+```
 
+## 3.2 Conduct PCA
 
+```{r}
+# start pca
+pca <- prcomp(df_pca, center = T, scale. = T)
+summary(pca)
+print(pca)
+ggbiplot::ggscreeplot(pca)
+```
 
+As we can see, the first 4 principal component is important.
 
-
-
-
-
+# 4 Reference
+[1] [National Agricultural Statistics Service](https://quickstats.nass.usda.gov/)
 

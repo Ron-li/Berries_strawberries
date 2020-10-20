@@ -1,7 +1,6 @@
 library(knitr)
 library(ggplot2)
 library(tidyverse)
-library(ggbiplot)
 
 sberry <- read.csv("/Users/amelia/Documents/mssp/MA615/Hw_berries/Berries_strawberries/data/strawberries.csv")
 df %<% filter(sberry, is.na(Value) == "FALSE")
