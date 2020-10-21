@@ -4,7 +4,7 @@ library(tidyverse)
 library(magrittr)
 
 sberry <- read.csv("/Users/amelia/Documents/mssp/MA615/Hw_berries/Berries_strawberries/data/strawberries.csv")
-df %<% filter(sberry, is.na(Value) == "FALSE")
+df <- filter(sberry, is.na(Value) == "FALSE")
 
 df %>% group_by(State) %>% summarize(total=sum(Value)) -> t1
 t1
